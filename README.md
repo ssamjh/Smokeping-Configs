@@ -9,3 +9,5 @@ Amazon AWS
 Oracle Cloud
 
 Digital Ocean
+
+Popular DNS servers
