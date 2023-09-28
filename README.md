@@ -21,4 +21,5 @@ The easiest way to set this up is create a folder inside your Smokeping config t
 @include /config/FOLDER-NAME/oraclecloud.conf
 @include /config/FOLDER-NAME/ovh.conf
 @include /config/FOLDER-NAME/linode.conf
-@include /config/FOLDER-NAME/vultr.conf```
+@include /config/FOLDER-NAME/vultr.conf
+```
