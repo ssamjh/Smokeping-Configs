@@ -1,26 +1,24 @@
 # Smokeping-Configs
- 
-A repository containing my personalised Smokeping configs to popular cloud services, such as:
 
-Popular DNS servers
+A repository containing my personalised Smokeping configs to public endpoints, such as:
 
-Alibaba Cloud
-Amazon AWS
-Linode
-Oracle Cloud
-OVH
-Vultr
+* Local network hosts (excluded from repo, sensitive)
+* Quic (excluded from repo, under NDA)
+* Popular DNS servers
+* Common services
+* Geographic targets
+* Alibaba Cloud
+* Amazon AWS, popular and dynamically generated from the [EC2 Reachability Test](http://ec2-reachability.amazonaws.com/)
+* Apple
+* Linode
+* Oracle Cloud
+* OVH
+* Vultr
 
+## Installation
 
-The easiest way to set this up is create a folder inside your Smokeping config then in your main Targets file do the following
-
+Clone the repo to your Smokeping config folder, then add the following to the end of `Targets`:
 
 ```
-@include /config/Smokeping-Configs/dns.conf
-@include /config/Smokeping-Configs/alibaba.conf
-@include /config/Smokeping-Configs/amazonaws.conf
-@include /config/Smokeping-Configs/linode.conf
-@include /config/Smokeping-Configs/oraclecloud.conf
-@include /config/Smokeping-Configs/ovh.conf
-@include /config/Smokeping-Configs/vultr.conf
+@include /config/Smokeping-Configs/targets.conf
 ```
