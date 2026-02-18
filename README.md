@@ -18,6 +18,7 @@ The easiest way to set this up is create a folder inside your Smokeping config t
 
 ```
 @include /config/Smokeping-Configs/dns.conf
+@include /config/Smokeping-Configs/dns_probe.conf
 @include /config/Smokeping-Configs/alibaba.conf
 @include /config/Smokeping-Configs/amazonaws.conf
 @include /config/Smokeping-Configs/hetzner.conf
