@@ -119,12 +119,14 @@ def update_conf(conf_path, region_ips, dry_run=False):
     updated = []
     current_region = None
     changes = []
+    conf_regions = set()
 
     for i, line in enumerate(lines):
         # Extract region from title lines like: title = Some Place - ap-southeast-1
         title_match = re.match(r"^(title\s*=\s*.+?-\s*)([a-z]{2}[-a-z0-9]+)\s*$", line)
         if title_match:
             current_region = title_match.group(2)
+            conf_regions.add(current_region)
             updated.append(line)
             continue
 
@@ -149,6 +151,26 @@ def update_conf(conf_path, region_ips, dry_run=False):
             current_region = None
 
         updated.append(line)
+
+    remote_regions = set(region_ips.keys())
+    stale = sorted(conf_regions - remote_regions)
+    missing = sorted(remote_regions - conf_regions)
+
+    if stale:
+        print(f"\n  Stale regions in conf (no longer in AWS data) — consider removing ({len(stale)}):")
+        for r in stale:
+            print(f"    {r}")
+
+    if missing:
+        print(f"\n  New regions in AWS data not yet in conf — consider adding ({len(missing)}):")
+        for r in missing:
+            ip = region_ips[r]
+            print(f"    {r}  ({ip})")
+            print(f"      +++ <slug>")
+            print(f"      menu = <Human Name>")
+            print(f"      title = <Human Name> - {r}")
+            print(f"      host = {ip}")
+            print()
 
     if not changes:
         print("No changes needed — all hosts are already up to date.")
