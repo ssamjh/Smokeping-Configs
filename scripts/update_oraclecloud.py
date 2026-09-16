@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """
-update_amazonaws.py - Update amazonaws.conf host IPs from AWS reachability data.
+update_oraclecloud.py - Update oraclecloud.conf host IPs from Oracle's IP ranges data.
 
-Fetches http://ec2-reachability.amazonaws.com/prefixes-ipv4.json, pings each IP
-twice to verify reachability, and uses the first responding IP per region.
-Falls back to the first IP if none respond.
+Fetches https://docs.oracle.com/en-us/iaas/tools/public_ip_ranges.json, pings each
+candidate IP twice to verify reachability, and uses the first responding IP
+per region. OBJECT_STORAGE-tagged CIDRs are tried first (matching the object
+storage endpoints the conf currently targets), then OCI-tagged CIDRs as
+fallback. If no IP responds, the first OBJECT_STORAGE candidate is used.
 
 Usage:
-    python update_amazonaws.py
-    python update_amazonaws.py --conf path/to/amazonaws.conf
-    python update_amazonaws.py --dry-run
-    python update_amazonaws.py --timeout 2 --workers 30
+    python update_oraclecloud.py
+    python update_oraclecloud.py --conf path/to/oraclecloud.conf
+    python update_oraclecloud.py --dry-run
+    python update_oraclecloud.py --timeout 2 --workers 30
 """
 
 import argparse
+import ipaddress
 import json
 import os
 import platform
@@ -23,14 +26,19 @@ import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_CONF = os.path.join(SCRIPT_DIR, "amazonaws.conf")
-JSON_URL = "http://ec2-reachability.amazonaws.com/prefixes-ipv4.json"
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_CONF = os.path.join(REPO_ROOT, "oraclecloud.conf")
+JSON_URL = "https://docs.oracle.com/en-us/iaas/tools/public_ip_ranges.json"
 IS_WINDOWS = platform.system().lower() == "windows"
 
 
+def cidr_to_ip(cidr):
+    """Return the network address of a CIDR as a string."""
+    return str(ipaddress.ip_network(cidr, strict=False).network_address)
+
+
 def fetch_region_candidates(url):
-    """Fetch JSON and return {region: [ip, ...]} preserving insertion order."""
+    """Fetch JSON and return {region: [ip, ...]} ordered OBJECT_STORAGE first, then OCI."""
     print(f"Fetching {url} ...")
     try:
         with urllib.request.urlopen(url, timeout=15) as resp:
@@ -40,10 +48,16 @@ def fetch_region_candidates(url):
         sys.exit(1)
 
     region_candidates = {}
-    for entry in data:
-        for region, prefixes in entry.items():
-            if prefixes:
-                region_candidates[region] = list(prefixes.values())
+    for entry in data.get("regions", []):
+        region = entry["region"]
+        cidrs = entry.get("cidrs", [])
+
+        object_storage = [cidr_to_ip(c["cidr"]) for c in cidrs if "OBJECT_STORAGE" in c.get("tags", [])]
+        oci = [cidr_to_ip(c["cidr"]) for c in cidrs if "OCI" in c.get("tags", [])]
+
+        candidates = object_storage + oci
+        if candidates:
+            region_candidates[region] = candidates
 
     print(f"  Got candidates for {len(region_candidates)} regions.")
     return region_candidates
@@ -72,7 +86,7 @@ def ping_twice(ip, timeout):
 
 
 def find_best_ip(region, candidates, timeout):
-    """Return (region, chosen_ip, tried) — first IP that passes ping_twice, else candidates[0]."""
+    """Return (region, chosen_ip, reachable) — first IP that passes ping_twice, else candidates[0]."""
     for ip in candidates:
         if ping_twice(ip, timeout):
             return region, ip, True
@@ -106,7 +120,7 @@ def resolve_region_ips(region_candidates, timeout, workers):
     if fallbacks:
         print(f"  Fallback to first IP (no response) for {len(fallbacks)} region(s):")
         for region, ip in sorted(fallbacks):
-            print(f"    {region:<24} {ip}")
+            print(f"    {region:<28} {ip}")
 
     return region_ips
 
@@ -122,7 +136,7 @@ def update_conf(conf_path, region_ips, dry_run=False):
     conf_regions = set()
 
     for i, line in enumerate(lines):
-        # Extract region from title lines like: title = Some Place - ap-southeast-1
+        # Extract region from title lines like: title = Some Place - us-ashburn-1
         title_match = re.match(r"^(title\s*=\s*.+?-\s*)([a-z]{2}[-a-z0-9]+)\s*$", line)
         if title_match:
             current_region = title_match.group(2)
@@ -157,12 +171,12 @@ def update_conf(conf_path, region_ips, dry_run=False):
     missing = sorted(remote_regions - conf_regions)
 
     if stale:
-        print(f"\n  Stale regions in conf (no longer in AWS data) — consider removing ({len(stale)}):")
+        print(f"\n  Stale regions in conf (no longer in OCI data) — consider removing ({len(stale)}):")
         for r in stale:
             print(f"    {r}")
 
     if missing:
-        print(f"\n  New regions in AWS data not yet in conf — consider adding ({len(missing)}):")
+        print(f"\n  New regions in OCI data not yet in conf — consider adding ({len(missing)}):")
         for r in missing:
             ip = region_ips[r]
             print(f"    {r}  ({ip})")
@@ -178,7 +192,7 @@ def update_conf(conf_path, region_ips, dry_run=False):
 
     print(f"\n{'[DRY RUN] ' if dry_run else ''}Changes ({len(changes)}):")
     for lineno, region, old, new in changes:
-        print(f"  line {lineno:3d}  {region:<24}  {old}  ->  {new}")
+        print(f"  line {lineno:3d}  {region:<28}  {old}  ->  {new}")
 
     if not dry_run:
         with open(conf_path, "w", encoding="utf-8") as f:
@@ -187,8 +201,8 @@ def update_conf(conf_path, region_ips, dry_run=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Update amazonaws.conf with latest reachable AWS IPs")
-    parser.add_argument("--conf", default=DEFAULT_CONF, help="Path to amazonaws.conf")
+    parser = argparse.ArgumentParser(description="Update oraclecloud.conf with latest reachable OCI IPs")
+    parser.add_argument("--conf", default=DEFAULT_CONF, help="Path to oraclecloud.conf")
     parser.add_argument("--dry-run", action="store_true", help="Show changes without writing")
     parser.add_argument("--timeout", type=int, default=2, help="Ping timeout in seconds (default: 2)")
     parser.add_argument("--workers", type=int, default=20, help="Parallel workers (default: 20)")

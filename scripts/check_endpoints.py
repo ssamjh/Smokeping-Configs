@@ -31,7 +31,7 @@ if sys.stdout.isatty():
 else:
     RED = GREEN = YELLOW = BOLD = NC = ""
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def parse_hosts(filepath):
@@ -134,7 +134,7 @@ def main():
                 sys.exit(1)
             files.append(path)
     else:
-        files = sorted(glob.glob(os.path.join(SCRIPT_DIR, "*.conf")))
+        files = sorted(glob.glob(os.path.join(REPO_ROOT, "*.conf")))
         if not files:
             print("No .conf files found.")
             sys.exit(1)
